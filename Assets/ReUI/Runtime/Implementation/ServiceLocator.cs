@@ -8,17 +8,25 @@ namespace Abyse.ReUI
         private readonly Dictionary<string, ServiceEntry> _idBoundServices = new();
         private readonly Dictionary<Type, ServiceEntry> _typeBoundServices = new();
 
+        public void Register(Type type, Func<object> factory)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
+            var entry = new ServiceEntry(factory);
+            RegisterInternal(entry, type);
+        }
+
         public void Register<T>(Func<object> factory, string id = null)
 
         {
             var entry = new ServiceEntry(factory);
-            RegisterInternal<T>(entry, id);
+            RegisterInternal(entry, typeof(T), id);
         }
 
         public void Register<T>(T instance, string id = null)
         {
             var entry = new ServiceEntry(instance);
-            RegisterInternal<T>(entry, id);
+            RegisterInternal(entry, typeof(T), id);
         }
 
         public bool TryGet<T>(out T result, string id = null)
@@ -62,7 +70,15 @@ namespace Abyse.ReUI
             }
         }
 
-        private void RegisterInternal<T>(ServiceEntry entry, string id = null)
+        public void Register(Type type, object instance)
+        {
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance), "Instance cannot be null.");
+            var entry = new ServiceEntry(instance);
+            RegisterInternal(entry, type);
+        }
+
+        private void RegisterInternal(ServiceEntry entry, Type type, string id = null)
         {
             if (!string.IsNullOrEmpty(id))
             {
@@ -71,8 +87,8 @@ namespace Abyse.ReUI
             }
             else
             {
-                if (!_typeBoundServices.TryAdd(typeof(T), entry))
-                    throw new InvalidOperationException($"Service of type '{typeof(T)}' is already registered.");
+                if (!_typeBoundServices.TryAdd(type, entry))
+                    throw new InvalidOperationException($"Service of type '{type}' is already registered.");
             }
         }
 

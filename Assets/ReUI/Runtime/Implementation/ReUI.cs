@@ -1,43 +1,111 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Abyse.ReUI
 {
     //TODO : automatic open/close from canvas/prefab 
-    //TODO : unity animation example
     //TODO : dialog example
     //TODO : tooltip example
     //TODO : Hero animation example
-    //TODO : minimal MVVM example
+    //TODO : minimal MVP example
     //TODO : TabBar example
     //TODO : infinite scroll / recycle view with pagination example
     //TODO : carousel example
     //TODO : unitask support ?? nahuya + zachem ?? 
-    //TODO : documentation for public methods in code 
     //TODO : pool clear methods 
-    //TODO : create widget wizard
+    //TODO : documentation for public methods in code 
     //TODO : documentation in readme
 
-    public class ReUI
+    [RequireComponent(typeof(CanvasGroup))]
+    [RequireComponent(typeof(CanvasScaler))]
+    public class ReUI : MonoBehaviour
     {
-        private readonly WidgetPool _pool;
-        private readonly UIRoot _root;
-        private readonly ServiceLocator _serviceLocator = new();
+        [HideInInspector] [SerializeField] private GameObject stash;
+        [SerializeField] private WidgetIdPair[] idBoundedWidgets;
+        [SerializeField] private Widget[] typeBoundedWidgets;
+        [SerializeField] private bool startManually = true;
 
-        public ReUI(UIRoot root)
+        private bool _isInitialized;
+
+        private WidgetPool _pool;
+        private ServiceLocator _serviceLocator;
+
+        private void Awake()
         {
-            _root = root;
-            _pool = new WidgetPool(root.Stash);
+            if (!startManually)
+                Initialize();
         }
 
-        public TWidget Open<TWidget>(string id = null, bool animated = true) where TWidget : Widget
+        private void Reset()
         {
-            var widget = GetWidget<TWidget>(id);
+            EnsureStashCreated();
+        }
+
+        public void Initialize()
+        {
+            if (_isInitialized)
+                return;
+            EnsureStashCreated();
+            EnsureDependencies();
+            RegisterWidgets();
+
+            _isInitialized = true;
+        }
+
+        private void EnsureStashCreated()
+        {
+            if (stash == null)
+                stash = new GameObject("Stash", typeof(RectTransform), typeof(Canvas));
+            SetUpStash();
+        }
+
+        private void EnsureDependencies()
+        {
+            _pool ??= new WidgetPool(stash);
+            _serviceLocator ??= new ServiceLocator();
+        }
+
+        private void RegisterWidgets()
+        {
+            if (idBoundedWidgets != null)
+                foreach (var pair in idBoundedWidgets)
+                {
+                    if (pair.widget == null)
+                        throw new ReUIException($"Widget prefab with id {pair.id} is not assigned.");
+                    RegisterWidget(pair.widget, pair.id);
+                }
+
+            if (typeBoundedWidgets != null)
+                foreach (var widget in typeBoundedWidgets)
+                {
+                    if (widget == null)
+                        throw new ReUIException("Widget in widgets array is not assigned.");
+                    RegisterWidget(widget.GetType(), widget);
+                }
+        }
+
+        private void SetUpStash()
+        {
+            stash.transform.SetParent(transform, false);
+            stash.SetActive(false);
+
+            var stashRect = stash.GetComponent<RectTransform>();
+            stashRect.anchorMin = Vector2.zero;
+            stashRect.anchorMax = Vector2.one;
+            stashRect.offsetMin = Vector2.zero;
+            stashRect.offsetMax = Vector2.zero;
+        }
+
+        public TWidget Open<TWidget>(string id = null, Transform mountingPoint = null, bool animated = true)
+            where TWidget : Widget
+        {
+            var widget = GetWidget<TWidget>(id, mountingPoint);
 
             widget.Initialize();
 
-            _root.StartCoroutine(widget.Open(animated));
+            StartCoroutine(widget.Open(animated));
 
             widget.OnCloseRequested += Close;
 
@@ -48,7 +116,7 @@ namespace Abyse.ReUI
         {
             widget.DeInitialize();
 
-            _root.StartCoroutine(WaitClosing());
+            StartCoroutine(WaitClosing());
             return;
 
             IEnumerator WaitClosing()
@@ -58,13 +126,6 @@ namespace Abyse.ReUI
             }
         }
 
-        public void RegisterType<T>(Func<object> factory, string id = null)
-        {
-            if (factory == null)
-                throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
-            _serviceLocator.Register<T>(factory, id);
-        }
-
         public void RegisterType<T>(T instance, string id = null)
         {
             if (instance == null)
@@ -72,6 +133,32 @@ namespace Abyse.ReUI
             _serviceLocator.Register(instance, id);
         }
 
+        public void RegisterType<T>(Func<object> factory, string id = null)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
+            _serviceLocator.Register<T>(factory, id);
+        }
+
+        public void RegisterType(Type type, object instance)
+        {
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance), "Instance cannot be null.");
+            if (type == null || !type.IsAssignableFrom(instance.GetType()))
+                throw new ArgumentException("Type must be assignable from the instance type.", nameof(type));
+
+            _serviceLocator.Register(type, instance);
+        }
+
+        public void RegisterType(Type type, Func<object> factory)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
+            if (type == null || !typeof(object).IsAssignableFrom(type))
+                throw new ArgumentException("Type must be a valid type.", nameof(type));
+
+            _serviceLocator.Register(type, factory);
+        }
 
         public void RegisterWidget<TWidget>(TWidget widget, string id = null) where TWidget : Widget
         {
@@ -89,6 +176,28 @@ namespace Abyse.ReUI
             _pool.Register<TWidget>(factory, id);
         }
 
+
+        public void RegisterWidget(Type widgetType, Widget widget)
+        {
+            if (widget == null)
+                throw new ArgumentNullException(nameof(widget), "Widget cannot be null.");
+            if (widgetType == null || !typeof(Widget).IsAssignableFrom(widgetType))
+                throw new ArgumentException("Widget type must be a subclass of Widget.", nameof(widgetType));
+
+            _pool.Register(widgetType, widget);
+        }
+
+
+        public void RegisterWidget(Type widgetType, Func<Widget> factory)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
+            if (widgetType == null || !typeof(Widget).IsAssignableFrom(widgetType))
+                throw new ArgumentException("Widget type must be a subclass of Widget.", nameof(widgetType));
+
+            _pool.Register(widgetType, factory);
+        }
+
         internal T GetInstance<T>(string id = null)
         {
             return _serviceLocator.Get<T>(id);
@@ -97,7 +206,7 @@ namespace Abyse.ReUI
         internal TWidget GetWidget<TWidget>(string widgetId = null, Transform mountingPoint = null)
             where TWidget : Widget
         {
-            mountingPoint ??= _root.transform;
+            mountingPoint ??= transform;
             var success = _pool.TryGet<TWidget>(out var widget, widgetId);
 
             if (!success || widget == null)
@@ -111,6 +220,13 @@ namespace Abyse.ReUI
         internal void ReturnWidget(Widget widget)
         {
             _pool.TryReturn(widget);
+        }
+
+        [Serializable]
+        private class WidgetIdPair
+        {
+            public string id;
+            public Widget widget;
         }
     }
 }

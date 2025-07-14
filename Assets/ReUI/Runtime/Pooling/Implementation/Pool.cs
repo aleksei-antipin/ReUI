@@ -28,7 +28,7 @@ namespace Abyse.Pooling
             if (string.IsNullOrEmpty(id))
                 return false;
 
-            var (resultObj, isNew) = GetOrCreate<TDerived>(id);
+            var (resultObj, isNew) = GetOrCreate(id);
             if (resultObj == null)
                 return false;
 
@@ -48,7 +48,7 @@ namespace Abyse.Pooling
             if (string.IsNullOrEmpty(id))
                 throw new KeyNotFoundException($"No prefab or factory registered for type '{typeof(TDerived).Name}'.");
 
-            var (obj, isNew) = GetOrCreate<TDerived>(id);
+            var (obj, isNew) = GetOrCreate(id);
             if (obj == null)
                 throw new KeyNotFoundException($"No prefab or factory registered for id '{id}'.");
 
@@ -74,6 +74,18 @@ namespace Abyse.Pooling
             return true;
         }
 
+        public void Register(Type type, TBase prefab)
+        {
+            if (prefab == null) throw new ArgumentNullException(nameof(prefab), "Prefab cannot be null.");
+            RegisterPrefabByType(type, prefab);
+        }
+
+        public void Register(Type type, Func<TBase> factory)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory), "Factory cannot be null.");
+            RegisterFactoryByType(type, factory);
+        }
+
         public void Register<TDerived>(TBase prefab, string id = null) where TDerived : TBase
         {
             if (prefab == null) throw new ArgumentNullException(nameof(prefab), "Prefab cannot be null.");
@@ -81,7 +93,7 @@ namespace Abyse.Pooling
             if (!string.IsNullOrEmpty(id))
                 RegisterPrefabById(id, prefab);
             else
-                RegisterPrefabByType<TDerived>(prefab);
+                RegisterPrefabByType(typeof(TDerived), prefab);
         }
 
 
@@ -92,11 +104,11 @@ namespace Abyse.Pooling
             if (!string.IsNullOrEmpty(id))
                 RegisterFactoryById(id, factory);
             else
-                RegisterFactoryByType<TDerived>(factory);
+                RegisterFactoryByType(typeof(TDerived), factory);
         }
 
 
-        private (TBase obj, bool isNew) GetOrCreate<TDerived>(string id) where TDerived : TBase
+        private (TBase obj, bool isNew) GetOrCreate(string id)
         {
             if (_pool.TryGetValue(id, out var stack) && stack.Count > 0)
             {
@@ -150,9 +162,8 @@ namespace Abyse.Pooling
                 throw new InvalidOperationException($"Prefab with id '{id}' is already registered.");
         }
 
-        private void RegisterPrefabByType<TDerived>(TBase prefab) where TDerived : TBase
+        private void RegisterPrefabByType(Type type, TBase prefab)
         {
-            var type = typeof(TDerived);
             var id = Guid.NewGuid().ToString();
             if (!_typeIdMap.TryAdd(type, id))
                 throw new InvalidOperationException($"Prefab for type '{type.Name}' is already registered.");
@@ -165,9 +176,8 @@ namespace Abyse.Pooling
                 throw new InvalidOperationException($"Factory with id '{id}' is already registered.");
         }
 
-        private void RegisterFactoryByType<TDerived>(Func<TBase> factory) where TDerived : TBase
+        private void RegisterFactoryByType(Type type, Func<TBase> factory)
         {
-            var type = typeof(TDerived);
             var id = Guid.NewGuid().ToString();
             if (!_typeIdMap.TryAdd(type, id))
                 throw new InvalidOperationException($"Factory for type '{type.Name}' is already registered.");

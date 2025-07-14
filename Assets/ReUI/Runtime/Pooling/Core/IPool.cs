@@ -7,6 +7,8 @@ namespace Abyse.ReUI
         bool TryGet<TDerived>(out TDerived obj, string id = null) where TDerived : TBase;
         TDerived Get<TDerived>(string id = null) where TDerived : TBase;
         bool TryReturn(TBase obj);
+        void Register(Type type, TBase prefab);
+        void Register(Type type, Func<TBase> factory);
         void Register<TDerived>(TBase prefab, string id = null) where TDerived : TBase;
         void Register<TDerived>(Func<TBase> factory, string id = null) where TDerived : TBase;
     }
